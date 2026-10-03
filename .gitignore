@@ -1,0 +1,18 @@
+# Personal data and local state
+playlists.json
+progress.json
+apk-output-dir.txt
+server.log
+__pycache__/
+
+# Toolchain downloads (JDK, Android SDK, Gradle, emulator images)
+android-tools/
+
+# Android build output and local config
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/build-number.txt
+*.apk
+*.idea/

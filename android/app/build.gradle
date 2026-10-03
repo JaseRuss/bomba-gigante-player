@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.gbplayer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.gbplayer'
+        minSdk 24
+        targetSdk 34
+        // build-apk.ps1 passes a rising build number so the installer treats each build as an update.
+        def buildNumber = (project.findProperty('buildNumber') ?: '1').toString()
+        versionCode Integer.parseInt(buildNumber)
+        versionName "1.0.${buildNumber}"
+    }
+
+    // The web app in ../public is bundled as-is; the same files also run in a desktop browser.
+    sourceSets {
+        main {
+            assets.srcDirs = ['../../public']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
