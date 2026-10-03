@@ -131,3 +131,8 @@ header h1 { order: 1; }
 
 #home-link { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
 #home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Picture-in-picture: show only the player. */
+body.pip header, body.pip .player-meta, body.pip #list, body.pip main > :not(#player-section) { display: none !important; }
+body.pip #player-section { margin: 0; padding: 0; }
+body.pip video { width: 100vw; height: 100vh; }
