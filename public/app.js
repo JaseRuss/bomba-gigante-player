@@ -473,6 +473,38 @@ $("player").addEventListener("timeupdate", (e) => {
 });
 $("player").addEventListener("pause", flushCurrent);
 setInterval(() => { if (ytState() === 1) flushCurrent(); }, 5000);
+
+// --- Media controls (S Pen button, headset/Bluetooth keys, notification shade) ---
+// The S Pen button and other hardware media keys arrive as play/pause commands. The Android shell
+// forwards them to __gbMedia; navigator.mediaSession covers keys Chromium handles itself.
+function mediaPlaying() {
+  if (!$("yt-wrap").hidden && ytPlayer) return ytState() === 1;
+  return !$("player").hidden && !$("player").paused && !$("player").ended;
+}
+function mediaAct(action) {
+  const yt = !$("yt-wrap").hidden && ytPlayer && ytPlayer.playVideo;
+  const v = $("player");
+  if (action === "toggle") action = mediaPlaying() ? "pause" : "play";
+  if (action === "play") { if (yt) ytPlayer.playVideo(); else if (!v.hidden) v.play().catch(() => {}); }
+  else if (action === "pause") { if (yt) ytPlayer.pauseVideo(); else v.pause(); }
+  else if (action === "next") playNext();
+}
+window.__gbMedia = mediaAct;
+let lastPlaying = null;
+function reportPlaying() {
+  const on = mediaPlaying();
+  if (on === lastPlaying) return;
+  lastPlaying = on;
+  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = on ? "playing" : "paused";
+  if (NATIVE && GBNative.setPlaying) { try { GBNative.setPlaying(on); } catch {} }
+}
+if ("mediaSession" in navigator) {
+  navigator.mediaSession.setActionHandler("play", () => mediaAct("play"));
+  navigator.mediaSession.setActionHandler("pause", () => mediaAct("pause"));
+  try { navigator.mediaSession.setActionHandler("nexttrack", () => mediaAct("next")); } catch {}
+}
+for (const ev of ["play", "playing", "pause", "ended", "emptied"]) $("player").addEventListener(ev, reportPlaying);
+setInterval(reportPlaying, 1000);
 $("player").addEventListener("error", (e) => {
   const err = e.target.error;
   const src = (e.target.currentSrc || "").replace(/[?#].*/, "").split("/").pop();

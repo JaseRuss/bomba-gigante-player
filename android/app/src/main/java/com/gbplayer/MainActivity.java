@@ -2,6 +2,10 @@ package com.gbplayer;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.PictureInPictureParams;
+import android.content.pm.PackageManager;
+import android.util.Rational;
+import android.view.KeyEvent;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -40,6 +44,7 @@ public class MainActivity extends Activity {
     private WebView api;
     private boolean apiReady = false;
     private final List<Runnable> queued = new ArrayList<>();
+    private volatile boolean playing = false;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
 
@@ -180,6 +185,9 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setPlaying(boolean on) { playing = on; }
+
+        @JavascriptInterface
         public void fetch(final String id, final String pathAndQuery, final String key) {
             runOnUiThread(new Runnable() {
                 @Override
@@ -222,6 +230,43 @@ public class MainActivity extends Activity {
                 + "GBApi.done(id,r.status,t);return;}})()"
                 + ".catch(function(e){GBApi.done(id,0,String(e));});";
         api.evaluateJavascript(js, null);
+    }
+
+    /** S Pen button, headset and Bluetooth media keys: hand play/pause to the page. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        String action = null;
+        switch (e.getKeyCode()) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_HEADSETHOOK: action = "toggle"; break;
+            case KeyEvent.KEYCODE_MEDIA_PLAY: action = "play"; break;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE: action = "pause"; break;
+            case KeyEvent.KEYCODE_MEDIA_NEXT: action = "next"; break;
+            default: break;
+        }
+        if (action == null) return super.dispatchKeyEvent(e);
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+            ui.evaluateJavascript("window.__gbMedia&&window.__gbMedia('" + action + "')", null);
+        }
+        return true;
+    }
+
+    /** Leaving the app while a video plays shrinks it to a picture-in-picture window. */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (playing && getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            try {
+                enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                        .setAspectRatio(new Rational(16, 9)).build());
+            } catch (IllegalStateException ignored) { }
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPip, android.content.res.Configuration cfg) {
+        super.onPictureInPictureModeChanged(inPip, cfg);
+        ui.evaluateJavascript("document.body.classList.toggle('pip'," + inPip + ")", null);
     }
 
     @Override
