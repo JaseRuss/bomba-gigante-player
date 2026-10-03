@@ -185,7 +185,17 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void setPlaying(boolean on) { playing = on; }
+        public void setPlaying(final boolean on) {
+            playing = on;
+            // Keep the screen awake only while a video is playing.
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+            });
+        }
 
         @JavascriptInterface
         public void fetch(final String id, final String pathAndQuery, final String key) {
