@@ -24,8 +24,8 @@ $apk = Join-Path $root 'android\app\build\outputs\apk\debug\app-debug.apk'
 foreach ($dir in $outputs) {
     if (Test-Path $dir) {
         # A unique name per build, so a phone can never install a stale same-named download by mistake.
-        Get-ChildItem $dir -Filter 'GBPlayer*.apk' -File | Remove-Item -Force
-        $name = "GBPlayer-build$build.apk"
+        Get-ChildItem $dir -File | Where-Object { $_.Name -match '^(GBPlayer|BombaGigante).*\.apk$' } | Remove-Item -Force
+        $name = "BombaGigante-build$build.apk"
         Copy-Item $apk (Join-Path $dir $name) -Force
         Write-Host "Copied build $build to $dir\$name"
     } else {

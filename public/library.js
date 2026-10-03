@@ -240,12 +240,18 @@ $("sg-close").onclick = () => $("sg-dialog").close();
 // ---------- Settings ----------
 $("set-btn").onclick = () => {
   $("set-audio").checked = !!settings.includeAudio;
+  $("set-hidewatched").checked = !!settings.hideWatched;
   renderLibStatus();
   $("set-dialog").showModal();
 };
 $("set-close").onclick = () => $("set-dialog").close();
 $("set-audio").onchange = (e) => {
   settings.includeAudio = e.target.checked;
+  saveSettings();
+  reload();
+};
+$("set-hidewatched").onchange = (e) => {
+  settings.hideWatched = e.target.checked;
   saveSettings();
   reload();
 };

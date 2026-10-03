@@ -7,7 +7,7 @@
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@drawable/ic_launcher"
-        android:label="GB Player"
+        android:label="Bomba Gigante"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity

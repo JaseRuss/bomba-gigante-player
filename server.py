@@ -1,4 +1,4 @@
-"""Local server for the Giant Bomb video player.
+"""Local server for Bomba Gigante, a Giant Bomb video player.
 
 Serves ./public and proxies /api/* to giantbomb.com/api/ using curl_cffi
 (Chrome TLS impersonation), because Cloudflare blocks plain HTTP clients and

@@ -1,4 +1,4 @@
-# Bomba Gigante Player
+# Bomba Gigante
 
 A personal video player for [Giant Bomb](https://www.giantbomb.com). It runs in a desktop browser (served by a small
 local Python server) and as an Android app (a WebView wrapper around the same web app).

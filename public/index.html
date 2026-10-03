@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GB Player</title>
+  <title>Bomba Gigante</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 </head>
 <body>
   <header>
-    <h1>GB<span>Player</span><small id="ver"></small></h1>
+    <h1 id="home-link" role="button" tabindex="0" title="Home">Bomba <span>Gigante</span><small id="ver"></small></h1>
     <form id="search-form">
       <input id="search" type="search" placeholder="Search videos…" autocomplete="off">
     </form>
@@ -131,6 +131,7 @@
     <form method="dialog">
       <h2>Settings</h2>
       <label class="check"><input id="set-audio" type="checkbox"> Include audio-only content (podcasts, .mp3 episodes)</label>
+      <label class="check"><input id="set-hidewatched" type="checkbox"> Hide videos I've finished from the home screen</label>
       <h3>Shows</h3>
       <p class="muted">Two separate lists: which shows appear in the show picker, and which shows' videos appear on the home page.</p>
       <div class="actions">

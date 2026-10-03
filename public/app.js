@@ -10,7 +10,7 @@ try { apiKey = localStorage.getItem(KEY_STORE) || ""; } catch {}
 // Settings page values. Audio-only content (podcasts, .mp3 episodes) is hidden unless switched on.
 // hiddenShows: show ids removed from the show list (they still appear in Browse all and search).
 // hiddenFromHome: show ids whose videos are left out of the home page feed (Browse all).
-let settings = { includeAudio: false, hiddenShows: [], hiddenFromHome: [], showSort: "recent" };
+let settings = { includeAudio: false, hiddenShows: [], hiddenFromHome: [], showSort: "recent", hideWatched: true };
 try { Object.assign(settings, JSON.parse(localStorage.getItem("gb_settings") || "{}")); } catch {}
 function saveSettings() { try { localStorage.setItem("gb_settings", JSON.stringify(settings)); } catch {} }
 const showsById = new Map();
@@ -141,9 +141,20 @@ function ytId(url) {
 let progress = {};
 let progressDirty = false;
 function getProgress(id) { return progress[id] || null; }
+// "Finished" = within the last 10 seconds, which is also how saveProgress records a completed video.
+function isCompleted(id) {
+  const p = progress[id];
+  return !!(p && p.d && p.t >= p.d - 10);
+}
+// When a video finishes, take its card off the home feed straight away (if that setting is on).
+function hideFinishedCard(id) {
+  if (!settings.hideWatched || showId || query || activePl) return;
+  const card = $("grid").querySelector(`.card[data-id="${id}"]`);
+  if (card) card.remove();
+}
 function saveProgress(id, t, d) {
   if (!id || !(t >= 0)) return;
-  if (d && t >= d - 10) { progress[id] = { t: d, d, m: d, at: Date.now() }; progressDirty = true; return; }
+  if (d && t >= d - 10) { progress[id] = { t: d, d, m: d, at: Date.now() }; progressDirty = true; hideFinishedCard(id); return; }
   // m = furthest point reached, so you can jump back after scrubbing around.
   progress[id] = { t, d: d || 0, m: Math.max(t, (progress[id] && progress[id].m) || 0), at: Date.now() };
   progressDirty = true;
@@ -218,7 +229,8 @@ async function loadMore() {
       params["where[or][1][show.videoFeed][equals]"] = "true";
     }
     // Shows hidden from the home page only apply to the plain feed: not when a show is picked or a search is typed.
-    const homeHidden = !showId && !query ? new Set(settings.hiddenFromHome) : null;
+    const homeFeed = !showId && !query;
+    const homeHidden = homeFeed ? new Set(settings.hiddenFromHome) : null;
     let added = 0;
     // Filtering happens here, so keep fetching pages until there's a decent number of cards to show.
     for (let tries = 0; tries < 8; tries++) {
@@ -227,6 +239,7 @@ async function loadMore() {
         // The server-side filter drops podcast-only shows; this also drops stray audio-only (.mp3) episodes.
         if (!settings.includeAudio && isAudio(v)) continue;
         if (homeHidden && homeHidden.has(v.show?.id)) continue;
+        if (homeFeed && settings.hideWatched && isCompleted(v.id)) continue;
         $("grid").append(card(v));
         added++;
       }
@@ -259,6 +272,7 @@ function card(v) {
   const sub = [v.show?.title, v.publishDate?.slice(0, 10)].filter(Boolean).join(" · ");
   const c = el("button", { className: "card", type: "button" }, thumb,
     el("div", { className: "body" }, el("h3", {}, v.title || "Untitled"), el("p", {}, sub)));
+  c.dataset.id = v.id;
   if (isLocked(v)) {
     c.classList.add("locked");
     thumb.append(el("span", { className: "badge key" }, "KEY NEEDED"));
@@ -298,7 +312,7 @@ function findMediaUrls(obj, depth = 0, out = new Set()) {
   return [...out];
 }
 
-function attach(src, startAt) {
+function attach(src, startAt, autoplay = true) {
   const video = $("player");
   $("yt-wrap").hidden = true;
   if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
@@ -314,7 +328,7 @@ function attach(src, startAt) {
     video.src = src.url;
     video.addEventListener("loadedmetadata", seek, { once: true });
   }
-  video.play().catch(() => {});
+  if (autoplay) video.play().catch(() => {});
 }
 
 let ytPlayer = null;
@@ -328,14 +342,18 @@ function loadYouTubeApi() {
 }
 function ytState() { return ytPlayer && ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : -1; }
 
-async function embedYouTube(id, startAt) {
+async function embedYouTube(id, startAt, autoplay = true) {
   $("player").pause(); $("player").hidden = true;
   $("yt-wrap").hidden = false;
   await loadYouTubeApi();
-  if (ytPlayer) { ytPlayer.loadVideoById({ videoId: id, startSeconds: startAt || 0 }); return; }
+  if (ytPlayer) {
+    const opts = { videoId: id, startSeconds: startAt || 0 };
+    if (autoplay) ytPlayer.loadVideoById(opts); else ytPlayer.cueVideoById(opts);
+    return;
+  }
   ytPlayer = new YT.Player("yt", {
     host: "https://www.youtube-nocookie.com", videoId: id,
-    playerVars: { autoplay: 1, start: Math.floor(startAt || 0), rel: 0, playsinline: 1 },
+    playerVars: { autoplay: autoplay ? 1 : 0, start: Math.floor(startAt || 0), rel: 0, playsinline: 1 },
     events: {
       onStateChange: (e) => {
         if (e.data === 0 && current) { saveProgress(current.id, ytPlayer.getDuration(), ytPlayer.getDuration()); playNext(); }
@@ -382,14 +400,17 @@ function playNext() {
   if (i >= 0 && plVideos[i + 1]) play(plVideos[i + 1].id);
 }
 
-async function play(id) {
+// opts.restore: reopening the app on the last video, so don't autoplay, nag for a key, or show errors.
+async function play(id, opts = {}) {
   flushCurrent();
   // Stop whatever was playing so a video with no source doesn't leave the old one running.
   $("player").pause();
   if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
   setStatus("Loading video…");
   let v;
-  try { v = await api(`videos/${id}`, { depth: 1 }); } catch (e) { setStatus("Error: " + e.message); return; }
+  try { v = await api(`videos/${id}`, { depth: 1 }); }
+  catch (e) { setStatus(opts.restore ? "" : "Error: " + e.message); return; }
+  try { localStorage.setItem("gb_last", String(id)); } catch {}
   current = v;
   needsKey = false;
   $("player-section").hidden = false;
@@ -419,14 +440,14 @@ async function play(id) {
     const mp4 = srcs.findIndex((s) => !s.hls && s.h && s.h <= 720);
     const pref = NATIVE && mp4 >= 0 ? mp4 : Math.max(0, srcs.findIndex((s) => s.hls));
     q.value = pref;
-    attach(srcs[pref], resumeAt(v.id));
+    attach(srcs[pref], resumeAt(v.id), !opts.restore);
     q.onchange = () => attach(srcs[q.value], $("player").currentTime);
     return;
   }
   const yt = ytId(v.youtubeUrl);
   if (yt) {
     setStatus(""); q.append(new Option("YouTube", 0));
-    try { await embedYouTube(yt, resumeAt(v.id)); } catch (e) { setStatus("Error: " + e.message); }
+    try { await embedYouTube(yt, resumeAt(v.id), !opts.restore); } catch (e) { setStatus("Error: " + e.message); }
     return;
   }
   // Nothing to play: clear both players so the previous video doesn't linger.
@@ -440,7 +461,8 @@ async function play(id) {
   setStatus(apiKey
     ? "No playable source came back for this video, even with your key. Open “Raw data” below to see which fields were returned."
     : "This video needs your API key to play. Enter it and it will start.");
-  if (!apiKey) askKey();
+  if (opts.restore) { $("player-section").hidden = true; setStatus(""); }
+  else if (!apiKey) askKey();
 }
 
 let lastSave = 0;
@@ -462,7 +484,33 @@ $("search-form").addEventListener("submit", (e) => { e.preventDefault(); query =
 $("more").onclick = loadMore;
 
 const showsReady = loadShows();
-loadProgress().then(reload);
+loadProgress().then(() => { reload(); return restoreLast(); });
+
+// Reopening the app: go back to the last video you watched, unless you finished it.
+async function restoreLast() {
+  let id = 0;
+  try { id = Number(localStorage.getItem("gb_last")) || 0; } catch {}
+  if (id && !isCompleted(id)) await play(id, { restore: true });
+}
+
+// The app name in the header: back to the home screen with every filter cleared.
+function goHome() {
+  flushCurrent();
+  $("player").pause();
+  if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+  $("player-section").hidden = true;
+  current = null;
+  showId = ""; query = ""; activePl = "";
+  $("search").value = "";
+  $("playlist-select").value = "";
+  $("pl-continue").hidden = true;
+  $("pl-sort").hidden = true;
+  updateShowButton();
+  window.scrollTo({ top: 0 });
+  reload();
+}
+$("home-link").onclick = goHome;
+$("home-link").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } };
 
 // ---------- Playlists ----------
 async function loadPlaylists() {
