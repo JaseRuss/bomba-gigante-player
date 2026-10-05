@@ -74,6 +74,8 @@ pre#raw { max-height: 300px; overflow: auto; background: var(--bg); padding: 10p
 .thumb .badge.audio { left: auto; right: 6px; top: 6px; background: #2b6cb0; }
 .player-meta .right { display: flex; gap: 12px; align-items: center; margin-left: auto; }
 #jump-btn { border-color: var(--accent); }
+#mark-btn.confirm { background: #b7791f; border-color: #b7791f; color: #fff; }
+#undo-btn { border-color: var(--accent); }
 
 #key-banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; background: #2a2418; border: 1px solid #6b5a2a; border-radius: 8px; }
 #key-banner[hidden] { display: none; }

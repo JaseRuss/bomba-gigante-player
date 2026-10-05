@@ -152,8 +152,10 @@ function hideFinishedCard(id) {
   const card = $("grid").querySelector(`.card[data-id="${id}"]`);
   if (card) card.remove();
 }
+// Set while a video is manually marked complete, so the still-open player can't overwrite that with its position.
+let manualDone = null;
 function saveProgress(id, t, d) {
-  if (!id || !(t >= 0)) return;
+  if (!id || !(t >= 0) || id === manualDone) return;
   if (d && t >= d - 10) { progress[id] = { t: d, d, m: d, at: Date.now() }; progressDirty = true; hideFinishedCard(id); return; }
   // m = furthest point reached, so you can jump back after scrubbing around.
   progress[id] = { t, d: d || 0, m: Math.max(t, (progress[id] && progress[id].m) || 0), at: Date.now() };
@@ -378,6 +380,47 @@ function position() {
   return $("player").hidden ? 0 : $("player").currentTime;
 }
 
+// Mark as complete: two taps to confirm, then an Undo button restores the previous progress.
+let markTimer = null, undoProgress;
+function resetMarkUi() {
+  clearTimeout(markTimer);
+  manualDone = null;
+  $("mark-btn").hidden = false;
+  $("mark-btn").textContent = "Mark as complete";
+  $("mark-btn").classList.remove("confirm");
+  $("undo-btn").hidden = true;
+}
+$("mark-btn").onclick = () => {
+  if (!current) return;
+  const btn = $("mark-btn");
+  if (!btn.classList.contains("confirm")) {
+    btn.classList.add("confirm");
+    btn.textContent = "Tap again to confirm";
+    markTimer = setTimeout(resetMarkUi, 4000);
+    return;
+  }
+  clearTimeout(markTimer);
+  flushCurrent();
+  const id = current.id;
+  undoProgress = progress[id] ? { ...progress[id] } : null;
+  manualDone = null;
+  const d = (progress[id] && progress[id].d) || position() || ($("player").duration || 0) || 1;
+  progress[id] = { t: d, d, m: d, at: Date.now() };
+  manualDone = id;
+  progressDirty = true;
+  hideFinishedCard(id);
+  flushProgress();
+  btn.hidden = true;
+  $("undo-btn").hidden = false;
+};
+$("undo-btn").onclick = () => {
+  if (!current) return;
+  if (undoProgress) progress[current.id] = undoProgress; else delete progress[current.id];
+  progressDirty = true;
+  resetMarkUi();
+  flushProgress();
+};
+
 function updateJump() {
   const p = current && getProgress(current.id);
   const btn = $("jump-btn");
@@ -412,6 +455,7 @@ async function play(id, opts = {}) {
   catch (e) { setStatus(opts.restore ? "" : "Error: " + e.message); return; }
   try { localStorage.setItem("gb_last", String(id)); } catch {}
   current = v;
+  resetMarkUi();
   needsKey = false;
   $("player-section").hidden = false;
   $("video-title").textContent = v.title || "";
