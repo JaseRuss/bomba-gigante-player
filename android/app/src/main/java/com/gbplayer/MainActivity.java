@@ -8,6 +8,9 @@ import android.util.Rational;
 import android.view.KeyEvent;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
@@ -45,6 +48,9 @@ public class MainActivity extends Activity {
     private boolean apiReady = false;
     private final List<Runnable> queued = new ArrayList<>();
     private volatile boolean playing = false;
+    private MediaSession mediaSession;
+    private String mediaTitle = "";
+    private long mediaPos = 0, mediaDur = 0;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
 
@@ -127,8 +133,47 @@ public class MainActivity extends Activity {
         cm.setAcceptThirdPartyCookies(ui, true);
         cm.setAcceptThirdPartyCookies(api, true);
 
+        setupMediaSession();
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
+
         api.loadUrl(API_ORIGIN + "/api/shows?limit=1");
         ui.loadUrl("https://" + HOST + "/index.html");
+    }
+
+    private void page(String js) { ui.evaluateJavascript(js, null); }
+
+    /** Registers with the system so S Pen / headset keys and the media notification reach the page. */
+    private void setupMediaSession() {
+        mediaSession = new MediaSession(this, "BombaGigante");
+        mediaSession.setCallback(new MediaSession.Callback() {
+            @Override public void onPlay() { page("window.__gbMedia&&window.__gbMedia('play')"); }
+            @Override public void onPause() { page("window.__gbMedia&&window.__gbMedia('pause')"); }
+            @Override public void onSkipToNext() { page("window.__gbMedia&&window.__gbMedia('next')"); }
+            @Override public void onSkipToPrevious() { page("window.__gbMedia&&window.__gbMedia('prev')"); }
+            @Override public void onSeekTo(long ms) { page("window.__gbSeek&&window.__gbSeek(" + (ms / 1000.0) + ")"); }
+        });
+        MediaService.session = mediaSession;
+        publishMedia(false);
+    }
+
+    private void publishMedia(boolean on) {
+        if (mediaSession == null) return;
+        long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
+                | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO;
+        mediaSession.setPlaybackState(new PlaybackState.Builder()
+                .setActions(actions)
+                .setState(on ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, mediaPos, on ? 1f : 0f)
+                .build());
+        mediaSession.setMetadata(new MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, mediaTitle)
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, mediaDur)
+                .build());
+        // Active even while paused, so the keys keep coming to this app and the notification stays.
+        mediaSession.setActive(true);
+        if (!mediaTitle.isEmpty()) MediaService.refresh(this);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -185,8 +230,19 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setMedia(final String title, final long posMs, final long durMs) {
+            mediaTitle = title == null ? "" : title;
+            mediaPos = posMs;
+            mediaDur = durMs;
+        }
+
+        @JavascriptInterface
         public void setPlaying(final boolean on) {
             playing = on;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() { publishMedia(on); }
+            });
             // Keep the screen awake only while a video is playing.
             runOnUiThread(new Runnable() {
                 @Override
@@ -290,6 +346,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        MediaService.stop(this);
+        MediaService.session = null;
+        if (mediaSession != null) { mediaSession.setActive(false); mediaSession.release(); }
         ui.destroy();
         api.destroy();
         super.onDestroy();

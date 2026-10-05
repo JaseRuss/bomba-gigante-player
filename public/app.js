@@ -488,20 +488,41 @@ function mediaAct(action) {
   if (action === "play") { if (yt) ytPlayer.playVideo(); else if (!v.hidden) v.play().catch(() => {}); }
   else if (action === "pause") { if (yt) ytPlayer.pauseVideo(); else v.pause(); }
   else if (action === "next") playNext();
+  else if (action === "prev") { const t = position(); if (t > 5) seekTo(0); }
+}
+function seekTo(sec) {
+  if (!$("yt-wrap").hidden && ytPlayer && ytPlayer.seekTo) ytPlayer.seekTo(sec, true);
+  else if (!$("player").hidden) $("player").currentTime = sec;
+}
+window.__gbSeek = seekTo;
+function mediaDuration() {
+  if (!$("yt-wrap").hidden && ytPlayer && ytPlayer.getDuration) return ytPlayer.getDuration() || 0;
+  const d = $("player").duration;
+  return $("player").hidden || !isFinite(d) ? 0 : d;
 }
 window.__gbMedia = mediaAct;
-let lastPlaying = null;
+let lastPlaying = null, lastMetaId = null, lastSync = 0;
 function reportPlaying() {
   const on = mediaPlaying();
-  if (on === lastPlaying) return;
+  const sync = Date.now() - lastSync > 5000;
+  const newVideo = (current ? current.id : null) !== lastMetaId;
+  if (on === lastPlaying && !newVideo && !sync) return;
   lastPlaying = on;
+  lastMetaId = current ? current.id : null;
+  lastSync = Date.now();
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = on ? "playing" : "paused";
-  if (NATIVE && GBNative.setPlaying) { try { GBNative.setPlaying(on); } catch {} }
+  if (NATIVE && GBNative.setPlaying) {
+    try {
+      GBNative.setPlaying(on);
+      if (GBNative.setMedia && current) GBNative.setMedia(current.title || "", Math.round(position() * 1000), Math.round(mediaDuration() * 1000));
+    } catch {}
+  }
 }
 if ("mediaSession" in navigator) {
   navigator.mediaSession.setActionHandler("play", () => mediaAct("play"));
   navigator.mediaSession.setActionHandler("pause", () => mediaAct("pause"));
   try { navigator.mediaSession.setActionHandler("nexttrack", () => mediaAct("next")); } catch {}
+  try { navigator.mediaSession.setActionHandler("seekto", (d) => seekTo(d.seekTime)); } catch {}
 }
 for (const ev of ["play", "playing", "pause", "ended", "emptied"]) $("player").addEventListener(ev, reportPlaying);
 setInterval(reportPlaying, 1000);
