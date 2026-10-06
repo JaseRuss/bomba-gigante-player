@@ -381,13 +381,17 @@ function position() {
 }
 
 // Mark as complete: two taps to confirm, then an Undo button restores the previous progress.
-let markTimer = null, undoProgress;
+let markTimer = null, undoTimer = null, undoState = null;
 function resetMarkUi() {
   clearTimeout(markTimer);
   manualDone = null;
   $("mark-btn").hidden = false;
   $("mark-btn").textContent = "Mark as complete";
   $("mark-btn").classList.remove("confirm");
+}
+function hideUndo() {
+  clearTimeout(undoTimer);
+  undoState = null;
   $("undo-btn").hidden = true;
 }
 $("mark-btn").onclick = () => {
@@ -402,7 +406,7 @@ $("mark-btn").onclick = () => {
   clearTimeout(markTimer);
   flushCurrent();
   const id = current.id;
-  undoProgress = progress[id] ? { ...progress[id] } : null;
+  undoState = { id, prev: progress[id] ? { ...progress[id] } : null };
   manualDone = null;
   const d = (progress[id] && progress[id].d) || position() || ($("player").duration || 0) || 1;
   progress[id] = { t: d, d, m: d, at: Date.now() };
@@ -411,13 +415,19 @@ $("mark-btn").onclick = () => {
   hideFinishedCard(id);
   flushProgress();
   btn.hidden = true;
+  // Undo stays available for 30 seconds, even after moving on to the next video.
   $("undo-btn").hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndo, 30000);
+  playNext();
 };
 $("undo-btn").onclick = () => {
-  if (!current) return;
-  if (undoProgress) progress[current.id] = undoProgress; else delete progress[current.id];
+  if (!undoState) return;
+  const { id, prev } = undoState;
+  if (prev) progress[id] = prev; else delete progress[id];
   progressDirty = true;
-  resetMarkUi();
+  if (current && current.id === id) resetMarkUi();
+  hideUndo();
   flushProgress();
 };
 
